@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\AdminNotificationEvent;
+use App\Exports\OrdersExport;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateOrderStatusRequest;
 use App\Models\Order;
@@ -11,6 +12,7 @@ use Illuminate\Container\Attributes\Auth as AttributesAuth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 
 class OrderController extends Controller
 {
@@ -73,5 +75,55 @@ class OrderController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+    // app/Http/Controllers/ReportController.php
+
+
+    // لتحميل الملف مباشرة
+    public function downloadReport(Request $request)
+    {
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date'
+        ]);
+
+        // هذا سيسبب تحميل الملف مباشرة في المتصفح
+        $this->orderService->generateOrdersReport(
+            $request->start_date,
+            $request->end_date,
+            true // تفعيل خيار التحميل المباشر
+        );
+    }
+
+    // للحصول على ملف PDF كرد API (بدون تحميل مباشر)
+    public function getReport(Request $request)
+    {
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date'
+        ]);
+
+        $result = $this->orderService->generateOrdersReport(
+            $request->start_date,
+            $request->end_date
+        );
+
+        return response()->make($result['content'], 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$result['file_name'].'"'
+        ]);
+    }
+
+    public function exportOrders(Request $request)
+    {
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date'
+        ]);
+
+        return Excel::download(
+            new OrdersExport($request->start_date, $request->end_date),
+            'orders_report.xlsx'
+        );
     }
 }

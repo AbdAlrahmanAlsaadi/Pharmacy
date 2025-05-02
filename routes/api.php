@@ -31,8 +31,11 @@ Route::middleware(['auth:sanctum', 'role:warehouse_owner'])->group(function () {
 //Route::post('updateStatus/{o}', [OrderController::class, 'updateStatus']);
 
 
+Route::post('download-report', [OrderController::class, 'downloadReport']);
+Route::post('export', [OrderController::class, 'exportOrders']);
 
-
+// للحصول على ملف PDF كرد API
+Route::post('get', [OrderController::class, 'getReport']);
 
 
 Route::middleware(['auth:sanctum', 'role:pharmacist'])->group(
@@ -50,4 +53,6 @@ Route::middleware(['auth:sanctum', 'role:pharmacist'])->group(
         Route::post('createorder', [OrderController::class, 'store'])
         ->middleware('permission:place_orders');
     }
+
+
 );
