@@ -37,6 +37,7 @@ Route::post('export', [OrderController::class, 'exportOrders']);
 // للحصول على ملف PDF كرد API
 Route::post('get', [OrderController::class, 'getReport']);
 
+Route::get('show', [MedicineController::class, 'byCategory']);
 
 Route::middleware(['auth:sanctum', 'role:pharmacist'])->group(
     function () {
