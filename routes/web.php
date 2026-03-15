@@ -3,5 +3,5 @@
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return "Pharmacy API is running";
+    return "Pharmacy APIdddddd is running";
 });
