@@ -12,24 +12,19 @@ class CategorySeeder extends Seeder
      * Run the database seeds.
      */
     public function run(): void
-    { {
-            $categories = [
-                'muscle',
-                'pain',
-                'prain'
-            ];
+    {
+        $categories = [
+            'muscle',
+            'pain',
+            'prain'
+        ];
 
-            foreach ($categories as $category) {
-                Category::create([
-                    'category' => $category
-                ]);
-            }
-
-
+        foreach ($categories as $category) {
+            Category::firstOrCreate([
+                'category' => $category
+            ]);
         }
-
-
-        }
+    }
 
 
 
