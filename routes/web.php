@@ -2,6 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return "Pharmacy APeeeIdddddd is running";
+Route::get('/map', function () {
+    return view('map');
 });
