@@ -1,12 +1,17 @@
+
+
 FROM php:8.2-cli
 
 WORKDIR /app
 
-# 1. تثبيت الإضافات والمتطلبات
+# تثبيت الإضافات الضرورية لـ PHP (بما فيها pdo_mysql و pdo_sqlite)
 RUN apt-get update && apt-get install -y \
     unzip \
     git \
     libsqlite3-dev \
+    libpng-dev \
+    libxml2-dev \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. تثبيت Composer
