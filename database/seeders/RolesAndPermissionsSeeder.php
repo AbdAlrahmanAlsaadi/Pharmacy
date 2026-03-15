@@ -83,18 +83,18 @@ class RolesAndPermissionsSeeder extends Seeder
         ]);
 
         // إنشاء مستخدم الصيدلاني
-        $pharmacist = User::firstOrCreate(
-            ['email' => 'pharma@gmail.com'],
+        $pharmacist = User::updateOrCreate(
+            ['email' => 'pharma@gmail.com'], // شرط البحث
             [
                 'name' => 'صيدلاني تجريبي',
                 'password' => bcrypt('password')
             ]
         );
 
-        $pharmacist->assignRole($pharmacistRole);
+        $pharmacist->assignRole('pharmacist');
 
-        // إنشاء مستخدم صاحب المستودع
-        $warehouseOwner = User::firstOrCreate(
+
+        $warehouseOwner = User::updateOrCreate(
             ['email' => 'admin@gmail.com'],
             [
                 'name' => 'صاحب مستودع تجريبي',
@@ -102,6 +102,5 @@ class RolesAndPermissionsSeeder extends Seeder
             ]
         );
 
-        $warehouseOwner->assignRole($warehouseOwnerRole);
-    }
-}
+        $warehouseOwner->assignRole('warehouse_owner');
+    }}
