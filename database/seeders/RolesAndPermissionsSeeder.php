@@ -5,37 +5,48 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use App\Models\User;
+use Spatie\Permission\PermissionRegistrar;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
     public function run()
     {
-        // Reset cached roles and permissions
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        // حذف الكاش الخاص بالصلاحيات
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // إنشاء الأدوار الأساسية حسب المتطلبات
-        $pharmacistRole = Role::firstOrCreate(['name' => 'pharmacist', 'guard_name' => 'web']);
-        $warehouseOwnerRole = Role::firstOrCreate(['name' => 'warehouse_owner', 'guard_name' => 'web']);
+        // إنشاء الأدوار
+        $pharmacistRole = Role::firstOrCreate([
+            'name' => 'pharmacist',
+            'guard_name' => 'web'
+        ]);
 
-        // إنشاء الصلاحيات حسب المتطلبات الإجبارية والأساسية
+        $warehouseOwnerRole = Role::firstOrCreate([
+            'name' => 'warehouse_owner',
+            'guard_name' => 'web'
+        ]);
+
+        // إنشاء الصلاحيات
         $permissions = [
-            // صلاحيات الصيدلاني (ابات الإجبارية)
+
+            // صلاحيات الصيدلاني
             'register_via_mobile',
             'login_logout',
             'browse_medicines_by_category',
-            // صلاحيات صاحب المستودع (الطلبات الإجبارية)
+
+            // صلاحيات صاحب المستودع
             'add_medicines',
 
-            // صلاحيات مشتركة (الطلبات الأساسية)
+            // صلاحيات مشتركة
             'search_medicines',
             'view_medicine_details',
 
-            // صلاحيات إضافية للصيدلاني
+            // إضافية للصيدلاني
             'place_orders',
             'view_order_status',
             'manage_favorites',
 
-            // صلاحيات إضافية لصاحب المستودع
+            // إضافية لصاحب المستودع
             'manage_orders',
             'update_order_status',
             'update_payment_status',
@@ -43,10 +54,13 @@ class RolesAndPermissionsSeeder extends Seeder
         ];
 
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission]);
+            Permission::firstOrCreate([
+                'name' => $permission,
+                'guard_name' => 'web'
+            ]);
         }
 
-        // تعيين الصلاحيات للصيدلاني حسب المتطلبات
+        // ربط الصلاحيات بالأدوار
         $pharmacistRole->syncPermissions([
             'register_via_mobile',
             'login_logout',
@@ -57,7 +71,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_order_status',
             'manage_favorites'
         ]);
-        // تعيين الصلاحيات لصاحب المستودع حسب المتطلبات
+
         $warehouseOwnerRole->syncPermissions([
             'add_medicines',
             'search_medicines',
@@ -68,20 +82,26 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_reports'
         ]);
 
-        // إنشاء مستخدم تجريبي للصيدلاني
-        $pharmacist = \App\Models\User::firstOrCreate([
-            'name' => 'صيدلاني تجريبي',
-            'email' => 'pharma@gmail.com',
-            'password' => bcrypt('password')
-        ]);
-        $pharmacist->assignRole('pharmacist');
+        // إنشاء مستخدم الصيدلاني
+        $pharmacist = User::firstOrCreate(
+            ['email' => 'pharma@gmail.com'],
+            [
+                'name' => 'صيدلاني تجريبي',
+                'password' => bcrypt('password')
+            ]
+        );
 
-        // إنشاء مستخدم تجريبي لصاحب المستودع
-        $warehouseOwner = \App\Models\User::firstOrCreate([
-            'name' => 'صاحب مستودع تجريبي',
-            'email' => 'admin@gmail.com',
-            'password' => bcrypt('password')
-        ]);
-        $warehouseOwner->assignRole('warehouse_owner');
+        $pharmacist->assignRole($pharmacistRole);
+
+        // إنشاء مستخدم صاحب المستودع
+        $warehouseOwner = User::firstOrCreate(
+            ['email' => 'admin@gmail.com'],
+            [
+                'name' => 'صاحب مستودع تجريبي',
+                'password' => bcrypt('password')
+            ]
+        );
+
+        $warehouseOwner->assignRole($warehouseOwnerRole);
     }
 }
