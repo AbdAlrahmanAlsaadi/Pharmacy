@@ -19,6 +19,7 @@ Route::middleware(['auth:sanctum'])->group(
 Route::post('register', [AuthController::class, 'register']);
 Route::post('verify', [AuthController::class, 'verifyOtp']);
 Route::post('login', [AuthController::class, 'login']);
+Route::post('stores', [MedicineController::class, 'store']);
 
 Route::middleware(['auth:sanctum', 'role:warehouse_owner'])->group(function () {
     Route::post('store', [MedicineController::class, 'store'])
