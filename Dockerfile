@@ -35,4 +35,4 @@ RUN mkdir -p /app/database && \
 EXPOSE 10000
 
 # تشغيل الـ Migrations ثم تشغيل السيرفر
-CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=10000
+CMD php artisan optimize:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=10000
