@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class PaymentController extends Controller
 {
 
-    
+
 
     public function create(Request $request)
     {
