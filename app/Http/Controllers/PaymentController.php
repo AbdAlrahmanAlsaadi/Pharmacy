@@ -15,9 +15,10 @@ use Illuminate\Support\Facades\Log;
 class PaymentController extends Controller
 {
 
+    
+
     public function create(Request $request)
     {
-
         $request->validate([
             'order_id' => 'required|exists:orders,id'
         ]);
@@ -26,18 +27,18 @@ class PaymentController extends Controller
 
         $user = Auth::user();
 
-        if ($order->user_id !== $user->id) {
-
+        // التحقق أن الطلب يعود لنفس المستخدم
+        if ($order->pharmacist_id !== $user->id) {
             return response()->json([
                 'error' => 'Unauthorized order'
             ], 403);
         }
 
+        // التحقق أن الطلب لم يتم دفعه مسبقاً
         if (Payment::where('order_id', $order->id)
             ->where('status', 'succeeded')
             ->exists()
         ) {
-
             return response()->json([
                 'error' => 'Order already paid'
             ], 400);
@@ -48,7 +49,7 @@ class PaymentController extends Controller
         try {
 
             $paymentIntent = PaymentIntent::create([
-                'amount' => $order->total_price * 100,
+                'amount' => $order->total_price * 100, // Stripe يقبل السنت
                 'currency' => 'usd',
                 'metadata' => [
                     'order_id' => $order->id,
