@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\MedicineController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PaymentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -55,7 +56,17 @@ Route::middleware(['auth:sanctum', 'role:pharmacist'])->group(
         Route::post('createorder', [OrderController::class, 'store'])
         ->middleware('permission:place_orders');
     }
-
-
 );
+Route::middleware('auth:sanctum')->post('/create-payment',[PaymentController::class,'create']);
+
+Route::post('/stripe/webhook',[PaymentController::class,'webhook']);
+
+Route::get('/payment-status',[PaymentController::class,'checkStatus']);
+
+Route::post('/payment-success',[PaymentController::class,'success']);
+
+Route::post('/payment-cancel',[PaymentController::class,'cancel']);
+
+
+
 
