@@ -20,7 +20,9 @@ RUN curl -sS https://getcomposer.org/installer | php && \
 COPY . .
 
 # تثبيت مكتبات Laravel
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader
+RUN php artisan config:cache
+RUN php artisan route:cache
 
 # صلاحيات المجلدات
 RUN chmod -R 775 /app/storage /app/bootstrap/cache
