@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
-use Stripe\Checkout\Session;
 use Stripe\Webhook;
 use App\Models\Order;
 use App\Models\Payment;
@@ -15,8 +14,9 @@ use Illuminate\Support\Facades\Log;
 class PaymentController extends Controller
 {
 
-
-
+    // ===========================
+    // 💳 إنشاء دفع للطلب
+    // ===========================
     public function create(Request $request)
     {
         $request->validate([
@@ -24,17 +24,16 @@ class PaymentController extends Controller
         ]);
 
         $order = Order::findOrFail($request->order_id);
-
         $user = Auth::user();
 
-        // التحقق أن الطلب يعود لنفس المستخدم
+        // تحقق ملكية الطلب
         if ($order->pharmacist_id !== $user->id) {
             return response()->json([
                 'error' => 'Unauthorized order'
             ], 403);
         }
 
-        // التحقق أن الطلب لم يتم دفعه مسبقاً
+        // تحقق إذا مدفوع مسبقاً
         if (Payment::where('order_id', $order->id)
             ->where('status', 'succeeded')
             ->exists()
@@ -49,11 +48,12 @@ class PaymentController extends Controller
         try {
 
             $paymentIntent = PaymentIntent::create([
-                'amount' => $order->total_price * 100, // Stripe يقبل السنت
+                'amount' => $order->total_price * 100,
                 'currency' => 'usd',
                 'metadata' => [
                     'order_id' => $order->id,
-                    'user_id' => $user->id
+                    'user_id' => $user->id,
+                    'type' => 'order'
                 ],
                 'receipt_email' => $user->email,
                 'automatic_payment_methods' => [
@@ -71,10 +71,7 @@ class PaymentController extends Controller
             ]);
 
             return response()->json([
-                'payment_intent_id' => $paymentIntent->id,
-                'client_secret' => $paymentIntent->client_secret,
-                'publishable_key' => env('STRIPE_KEY'),
-                'amount' => $order->total_price
+                'client_secret' => $paymentIntent->client_secret
             ]);
         } catch (\Exception $e) {
 
@@ -87,23 +84,21 @@ class PaymentController extends Controller
     }
 
 
-
+    // ===========================
+    // 🔔 Webhook (أهم شي)
+    // ===========================
     public function webhook(Request $request)
     {
-
         $payload = $request->getContent();
-
         $sigHeader = $request->header('Stripe-Signature');
 
         try {
-
             $event = Webhook::constructEvent(
                 $payload,
                 $sigHeader,
                 env('STRIPE_WEBHOOK_SECRET')
             );
         } catch (\Exception $e) {
-
             return response()->json(['error' => 'Invalid webhook'], 400);
         }
 
@@ -113,32 +108,37 @@ class PaymentController extends Controller
 
                 $intent = $event->data->object;
 
-                $payment = Payment::where('stripe_payment_id', $intent->id)->first();
+                // 🟢 حالة طلب
+                if ($intent->metadata->type === 'order') {
 
-                if ($payment && $payment->status !== 'succeeded') {
+                    $payment = Payment::where('stripe_payment_id', $intent->id)->first();
 
-                    $payment->update([
-                        'status' => 'succeeded'
-                    ]);
+                    if ($payment && $payment->status !== 'succeeded') {
 
-                    Order::where('id', $intent->metadata->order_id)
-                        ->update(['status' => 'paid']);
+                        $payment->update(['status' => 'succeeded']);
+
+                        Order::where('id', $intent->metadata->order_id)
+                            ->update(['status' => 'paid']);
+                    }
+                }
+
+                // 🟢 شحن محفظة
+                if ($intent->metadata->type === 'wallet') {
+
+                    $user = \App\Models\User::find($intent->metadata->user_id);
+
+                    $user->increment('balance', $intent->amount / 100);
                 }
 
                 break;
+
 
             case 'payment_intent.payment_failed':
 
                 $intent = $event->data->object;
 
-                $payment = Payment::where('stripe_payment_id', $intent->id)->first();
-
-                if ($payment) {
-
-                    $payment->update([
-                        'status' => 'failed'
-                    ]);
-                }
+                Payment::where('stripe_payment_id', $intent->id)
+                    ->update(['status' => 'failed']);
 
                 break;
         }
@@ -147,10 +147,39 @@ class PaymentController extends Controller
     }
 
 
+    // ===========================
+    // 💰 شحن محفظة
+    // ===========================
+    public function topUp(Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:1'
+        ]);
 
+        $user = Auth::user();
+
+        Stripe::setApiKey(env('STRIPE_SECRET'));
+
+        $intent = PaymentIntent::create([
+            'amount' => $request->amount * 100,
+            'currency' => 'usd',
+            'metadata' => [
+                'type' => 'wallet',
+                'user_id' => $user->id
+            ]
+        ]);
+
+        return response()->json([
+            'client_secret' => $intent->client_secret
+        ]);
+    }
+
+
+    // ===========================
+    // 🔍 تحقق حالة الدفع
+    // ===========================
     public function checkStatus(Request $request)
     {
-
         $request->validate([
             'payment_intent_id' => 'required'
         ]);
@@ -158,7 +187,6 @@ class PaymentController extends Controller
         $payment = Payment::where('stripe_payment_id', $request->payment_intent_id)->first();
 
         if (!$payment) {
-
             return response()->json([
                 'error' => 'Payment not found'
             ], 404);
@@ -172,7 +200,7 @@ class PaymentController extends Controller
 
 
 
-    public function success(Request $request)
+public function success(Request $request)
     {
 
         $request->validate([
@@ -198,10 +226,10 @@ class PaymentController extends Controller
         return response()->json([
             'message' => 'Payment successful'
         ]);
+
+
+
     }
-
-
-
     public function cancel(Request $request)
     {
 
@@ -224,5 +252,6 @@ class PaymentController extends Controller
         return response()->json([
             'message' => 'Payment canceled'
         ]);
+
+        }
     }
-}

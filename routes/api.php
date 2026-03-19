@@ -59,7 +59,7 @@ Route::middleware(['auth:sanctum', 'role:pharmacist'])->group(
 );
 Route::middleware('auth:sanctum')->post('/create-payment',[PaymentController::class,'create']);
 
-Route::post('/stripe/webhook',[PaymentController::class,'webhook']);
+Route::post('stripe/webhook',[PaymentController::class,'webhook']);
 
 Route::get('/payment-status',[PaymentController::class,'checkStatus']);
 
