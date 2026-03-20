@@ -15,7 +15,16 @@ use Illuminate\Support\Facades\Log;
 class PaymentController extends Controller
 {
 
+    public function testBalance()
+    {
+        /** @var \App\Models\User $user */
 
+        $user = Auth::user();
+        $user->balance += 1000;
+        $user->save();
+
+        return "balance updated";
+    }
 
     public function create(Request $request)
 {
