@@ -58,6 +58,7 @@ Route::middleware(['auth:sanctum', 'role:pharmacist'])->group(
     }
 );
 Route::middleware('auth:sanctum')->post('/create-payment',[PaymentController::class,'create']);
+Route::middleware('auth:sanctum')->post('createorder', [OrderController::class, 'store']);
 
 Route::post('stripe/webhook',[PaymentController::class,'webhook']);
 
