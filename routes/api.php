@@ -66,4 +66,4 @@ Route::get('/payment-status',[PaymentController::class,'checkStatus']);
 Route::post('/payment-success',[PaymentController::class,'success']);
 
 Route::post('/payment-cancel',[PaymentController::class,'cancel']);
-Route::post('/payment-topup', [PaymentController::class, 'topUp']);
+Route::middleware('auth:sanctum')->post('/payment-topup', [PaymentController::class, 'topUp']);
