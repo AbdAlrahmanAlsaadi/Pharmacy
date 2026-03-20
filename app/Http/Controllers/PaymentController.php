@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
+use Stripe\Checkout\Session;
 use Stripe\Webhook;
 use App\Models\Order;
 use App\Models\Payment;
@@ -14,79 +15,109 @@ use Illuminate\Support\Facades\Log;
 class PaymentController extends Controller
 {
 
-    // ===========================
-    // 💳 إنشاء دفع للطلب
-    // ===========================
+
+
     public function create(Request $request)
-    {
-        $request->validate([
-            'order_id' => 'required|exists:orders,id'
-        ]);
+{
+    $request->validate([
+        'order_id' => 'required|exists:orders,id',
+        'payment_method' => 'required|in:stripe,wallet'
+    ]);
+    $order = Order::findOrFail($request->order_id);
+        /** @var \App\Models\User $user */
+    $user = Auth::user();
 
-        $order = Order::findOrFail($request->order_id);
-        $user = Auth::user();
+    // التحقق من صاحب الطلب
+    if ($order->pharmacist_id !== $user->id) {
+        return response()->json(['error' => 'Unauthorized order'], 403);
+    }
 
-        // تحقق ملكية الطلب
-        if ($order->pharmacist_id !== $user->id) {
+    // التحقق إذا مدفوع مسبقاً
+    if ($order->payment_status === 'paid') {
+        return response()->json(['error' => 'Order already paid'], 400);
+    }
+
+    /*
+    ====================================
+    🟢 الدفع من المحفظة
+    ====================================
+    */
+    if ($request->payment_method === 'wallet') {
+
+        if ($user->balance < $order->total_price) {
             return response()->json([
-                'error' => 'Unauthorized order'
-            ], 403);
-        }
-
-        // تحقق إذا مدفوع مسبقاً
-        if (Payment::where('order_id', $order->id)
-            ->where('status', 'succeeded')
-            ->exists()
-        ) {
-            return response()->json([
-                'error' => 'Order already paid'
+                'error' => 'Insufficient balance'
             ], 400);
         }
 
-        Stripe::setApiKey(env('STRIPE_SECRET'));
+        // خصم الرصيد
+        $user->balance -= $order->total_price;
+        $user->save();
 
-        try {
+        // تحديث الطلب
+        $order->update([
+            'status' => 'paid',
+            'payment_status' => 'paid'
+        ]);
 
-            $paymentIntent = PaymentIntent::create([
-                'amount' => $order->total_price * 100,
-                'currency' => 'usd',
-                'metadata' => [
-                    'order_id' => $order->id,
-                    'user_id' => $user->id,
-                    'type' => 'order'
-                ],
-                'receipt_email' => $user->email,
-                'automatic_payment_methods' => [
-                    'enabled' => true
-                ]
-            ]);
+        // تسجيل العملية
+        \App\Models\WalletTransaction::create([
+            'user_id' => $user->id,
+            'amount' => $order->total_price,
+            'type' => 'withdraw'
+        ]);
 
-            Payment::create([
-                'user_id' => $user->id,
-                'order_id' => $order->id,
-                'stripe_payment_id' => $paymentIntent->id,
-                'amount' => $order->total_price,
-                'currency' => 'usd',
-                'status' => 'pending'
-            ]);
-
-            return response()->json([
-                'client_secret' => $paymentIntent->client_secret
-            ]);
-        } catch (\Exception $e) {
-
-            Log::error('Stripe error: ' . $e->getMessage());
-
-            return response()->json([
-                'error' => 'Payment creation failed'
-            ], 500);
-        }
+        return response()->json([
+            'message' => 'Paid successfully using wallet'
+        ]);
     }
 
+    /*
+    ====================================
+    🔵 الدفع عبر Stripe
+    ====================================
+    */
+    Stripe::setApiKey(env('STRIPE_SECRET'));
 
-    // ===========================
-    // 🔔 Webhook (أهم شي)
-    // ===========================
+    try {
+
+        $paymentIntent = PaymentIntent::create([
+            'amount' => $order->total_price * 100,
+            'currency' => 'usd',
+            'metadata' => [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'type' => 'order_payment'
+            ],
+            'receipt_email' => $user->email,
+        ]);
+
+        Payment::create([
+            'user_id' => $user->id,
+            'order_id' => $order->id,
+            'stripe_payment_id' => $paymentIntent->id,
+            'amount' => $order->total_price,
+            'currency' => 'usd',
+            'status' => 'pending'
+        ]);
+
+        return response()->json([
+            'payment_intent_id' => $paymentIntent->id,
+            'client_secret' => $paymentIntent->client_secret
+        ]);
+
+    } catch (\Exception $e) {
+
+        Log::error('Stripe error: ' . $e->getMessage());
+
+        return response()->json([
+            'error' => 'Payment creation failed'
+        ], 500);
+    }
+}
+
+
+
     public function webhook(Request $request)
     {
         $payload = $request->getContent();
@@ -108,8 +139,32 @@ class PaymentController extends Controller
 
                 $intent = $event->data->object;
 
-                // 🟢 حالة طلب
-                if ($intent->metadata->type === 'order') {
+                /*
+            ============================
+            🟢 شحن محفظة
+            ============================
+            */
+                if ($intent->metadata->type === 'wallet_topup') {
+
+                    $user = \App\Models\User::find($intent->metadata->user_id);
+                    $amount = $intent->amount / 100;
+
+                    $user->balance += $amount;
+                    $user->save();
+
+                    \App\Models\WalletTransaction::create([
+                        'user_id' => $user->id,
+                        'amount' => $amount,
+                        'type' => 'deposit'
+                    ]);
+                }
+
+                /*
+            ============================
+            🔵 دفع طلب
+            ============================
+            */
+                if ($intent->metadata->type === 'order_payment') {
 
                     $payment = Payment::where('stripe_payment_id', $intent->id)->first();
 
@@ -118,20 +173,14 @@ class PaymentController extends Controller
                         $payment->update(['status' => 'succeeded']);
 
                         Order::where('id', $intent->metadata->order_id)
-                            ->update(['status' => 'paid']);
+                            ->update([
+                                'status' => 'paid',
+                                'payment_status' => 'paid'
+                            ]);
                     }
                 }
 
-                // 🟢 شحن محفظة
-                if ($intent->metadata->type === 'wallet') {
-
-                    $user = \App\Models\User::find($intent->metadata->user_id);
-
-                    $user->increment('balance', $intent->amount / 100);
-                }
-
                 break;
-
 
             case 'payment_intent.payment_failed':
 
@@ -147,39 +196,10 @@ class PaymentController extends Controller
     }
 
 
-    // ===========================
-    // 💰 شحن محفظة
-    // ===========================
-    public function topUp(Request $request)
-    {
-        $request->validate([
-            'amount' => 'required|numeric|min:1'
-        ]);
 
-        $user = Auth::user();
-
-        Stripe::setApiKey(env('STRIPE_SECRET'));
-
-        $intent = PaymentIntent::create([
-            'amount' => $request->amount * 100,
-            'currency' => 'usd',
-            'metadata' => [
-                'type' => 'wallet',
-                'user_id' => $user->id
-            ]
-        ]);
-
-        return response()->json([
-            'client_secret' => $intent->client_secret
-        ]);
-    }
-
-
-    // ===========================
-    // 🔍 تحقق حالة الدفع
-    // ===========================
     public function checkStatus(Request $request)
     {
+
         $request->validate([
             'payment_intent_id' => 'required'
         ]);
@@ -187,6 +207,7 @@ class PaymentController extends Controller
         $payment = Payment::where('stripe_payment_id', $request->payment_intent_id)->first();
 
         if (!$payment) {
+
             return response()->json([
                 'error' => 'Payment not found'
             ], 404);
@@ -200,7 +221,7 @@ class PaymentController extends Controller
 
 
 
-public function success(Request $request)
+    public function success(Request $request)
     {
 
         $request->validate([
@@ -226,10 +247,10 @@ public function success(Request $request)
         return response()->json([
             'message' => 'Payment successful'
         ]);
-
-
-
     }
+
+
+
     public function cancel(Request $request)
     {
 
@@ -252,6 +273,29 @@ public function success(Request $request)
         return response()->json([
             'message' => 'Payment canceled'
         ]);
-
-        }
     }
+
+    public function topUp(Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:1'
+        ]);
+
+        $user = Auth::user();
+
+        Stripe::setApiKey(env('STRIPE_SECRET'));
+
+        $paymentIntent = PaymentIntent::create([
+            'amount' => $request->amount * 100,
+            'currency' => 'usd',
+            'metadata' => [
+                'type' => 'wallet_topup',
+                'user_id' => $user->id
+            ]
+        ]);
+
+        return response()->json([
+            'client_secret' => $paymentIntent->client_secret
+        ]);
+    }
+}
